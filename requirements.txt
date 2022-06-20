@@ -1,0 +1,8 @@
+h5py>=2.10.0
+kaldiio>=2.17.0
+configargparse>=1.2.1
+librosa>=0.8.0
+torch_complex
+pytorch_wpe
+tqdm
+tensorboard>=1.14

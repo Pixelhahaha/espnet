@@ -486,6 +486,7 @@ def train(args):
     else:
         dtype = torch.float32
     model = model.to(device=device, dtype=dtype)
+    print("model:", model)
 
     if args.freeze_mods:
         model, model_params = freeze_modules(model, args.freeze_mods)
