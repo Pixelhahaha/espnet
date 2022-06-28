@@ -5,12 +5,12 @@
 
 . ./path.sh || exit 1;
 . ./cmd.sh || exit 1;
-export CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"
+export CUDA_VISIBLE_DEVICES="0,1"
 # general configuration
 backend=pytorch
-stage=4        # start from 0 if you need to start from data preparation
-stop_stage=4
-ngpu=8         # number of gpus ("0" uses cpu, otherwise use gpu)
+stage=0        # start from 0 if you need to start from data preparation
+stop_stage=3
+ngpu=2         # number of gpus ("0" uses cpu, otherwise use gpu)
 debugmode=1
 dumpdir=dump   # directory to dump full features
 N=0            # number of minibatches to be used (mainly for debugging). "0" uses all minibatches.
@@ -20,8 +20,8 @@ resume=        # Resume the training from snapshot
 # feature configuration
 do_delta=false
 
-preprocess_config=
-train_config=conf/train.yaml
+preprocess_config=conf/specaug.yaml
+train_config=conf/tuning/transducer/train_conformer-rnn_transducer_aux_ngpu4.yaml
 lm_config=conf/lm.yaml
 decode_config=conf/decode.yaml
 
@@ -52,7 +52,7 @@ set -e
 set -u
 set -o pipefail
 
-train_set=train_sp
+train_set=train
 train_dev=dev
 recog_set="dev test"
 
@@ -84,26 +84,26 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     echo "stage 1: Feature Generation"
     fbankdir=fbank
     # Generate the fbank features; by default 80-dimensional fbanks with pitch on each frame
-    steps/make_fbank_pitch.sh --cmd "$train_cmd" --nj 64 --write_utt2num_frames true \
+    steps/make_fbank.sh --cmd "$train_cmd" --nj 64 --write_utt2num_frames true \
         data/train exp/make_fbank/train ${fbankdir}
     utils/fix_data_dir.sh data/train
-    steps/make_fbank_pitch.sh --cmd "$train_cmd" --nj 40 --write_utt2num_frames true \
+    steps/make_fbank.sh --cmd "$train_cmd" --nj 40 --write_utt2num_frames true \
         data/dev exp/make_fbank/dev ${fbankdir}
     utils/fix_data_dir.sh data/dev
-    steps/make_fbank_pitch.sh --cmd "$train_cmd" --nj 40 --write_utt2num_frames true \
+    steps/make_fbank.sh --cmd "$train_cmd" --nj 40 --write_utt2num_frames true \
         data/test exp/make_fbank/test ${fbankdir}
     utils/fix_data_dir.sh data/test
-
+:<<COMMENT
     # speed-perturbed
     utils/perturb_data_dir_speed.sh 0.9 data/train data/temp1
     utils/perturb_data_dir_speed.sh 1.0 data/train data/temp2
     utils/perturb_data_dir_speed.sh 1.1 data/train data/temp3
     utils/combine_data.sh --extra-files utt2uniq data/${train_set} data/temp1 data/temp2 data/temp3
     rm -r data/temp1 data/temp2 data/temp3
-    steps/make_fbank_pitch.sh --cmd "$train_cmd" --nj 64 --write_utt2num_frames true \
+    steps/make_fbank.sh --cmd "$train_cmd" --nj 64 --write_utt2num_frames true \
         data/${train_set} exp/make_fbank/${train_set} ${fbankdir}
     utils/fix_data_dir.sh data/${train_set}
-
+COMMENT
     # compute global CMVN
     compute-cmvn-stats scp:data/${train_set}/feats.scp data/${train_set}/cmvn.ark
 
@@ -111,11 +111,11 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
 fi
 
 if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
-    dump.sh --cmd "$train_cmd" --nj 64 --do_delta ${do_delta} \
+    dump.sh --cmd "$train_cmd" --nj 32 --do_delta ${do_delta} \
         data/${train_set}/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/train ${feat_tr_dir}
     for rtask in ${recog_set}; do
         feat_recog_dir=${dumpdir}/${rtask}/delta${do_delta}; mkdir -p ${feat_recog_dir}
-        dump.sh --cmd "$train_cmd" --nj 40 --do_delta ${do_delta} \
+        dump.sh --cmd "$train_cmd" --nj 20 --do_delta ${do_delta} \
             data/${rtask}/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/recog/${rtask} \
             ${feat_recog_dir}
     done
@@ -170,7 +170,7 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         asr_train.py \
         --config ${train_config} \
         --preprocess-conf ${preprocess_config} \
-        --ngpu ${ngpu} --n-iter-processes 10 \
+        --ngpu ${ngpu} --n-iter-processes 60 \
         --backend ${backend} \
         --outdir ${expdir}/results \
         --tensorboard-dir tensorboard/${expname} \
@@ -180,7 +180,7 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         --minibatches ${N} \
         --verbose ${verbose} \
         --resume ${resume} \
-        --train-json ${feat_tr_dir}/data.json \
+        --train-json ${feat_dt_dir}/data.json \
         --valid-json ${feat_dt_dir}/data.json
 fi
 

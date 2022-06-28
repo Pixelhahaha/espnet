@@ -1,0 +1,33 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "asr",
+            "type": "python",
+            "request": "launch",
+            "program": "../../../espnet/bin/asr_train.py",
+            "env": {"PYTHONPATH": "/data1/wangzhou/asr/e2e/transducer/espnet/"},
+            "console": "integratedTerminal",
+            "cwd": "/data1/wangzhou/asr/e2e/transducer/espnet/egs/aishell/asr1/",
+            "args": 
+               ["--config", "conf/tuning/transducer/train_conformer-rnn_transducer_aux_ngpu4.yaml",
+                "--preprocess-conf", "conf/specaug.yaml",
+                "--ngpu", "1",
+                "--n-iter-processes", "60",
+                "--backend", "pytorch",
+                "--outdir", "exp/train_pytorch_train_conformer-rnn_transducer_aux_ngpu4_specaug/results",
+                "--tensorboard-dir", "tensorboard/train_pytorch_train_conformer-rnn_transducer_aux_ngpu4_specaug",
+                "--debugmode", "1",
+                "--dict", "data/lang_1char/train_units.txt",
+                "--debugdir", "exp/train_sp_pytorch_train_conformer-rnn_transducer_aux_ngpu4_specaug",
+                "--minibatches", "0",
+                "--verbose", "1",
+                "--train-json", "dump/train/deltafalse/data.json",
+                "--valid-json", "dump/dev/deltafalse/data.json"
+               ]
+        }
+    ]
+}

@@ -430,6 +430,8 @@ def train(args):
         model = model_class(
             idim_list[0] if args.num_encs == 1 else idim_list, odim, args
         )
+    print(model)
+    num_params = sum(p.numel() for p in model.parameters())
     assert isinstance(model, ASRInterface)
     total_subsampling_factor = model.get_total_subsampling_factor()
 
@@ -533,33 +535,7 @@ def train(args):
     else:
         raise NotImplementedError("unknown optimizer: " + args.opt)
 
-    # setup apex.amp
-    if args.train_dtype in ("O0", "O1", "O2", "O3"):
-        try:
-            from apex import amp
-        except ImportError as e:
-            logging.error(
-                f"You need to install apex for --train-dtype {args.train_dtype}. "
-                "See https://github.com/NVIDIA/apex#linux"
-            )
-            raise e
-        if args.opt == "noam":
-            model, optimizer.optimizer = amp.initialize(
-                model, optimizer.optimizer, opt_level=args.train_dtype
-            )
-        else:
-            model, optimizer = amp.initialize(
-                model, optimizer, opt_level=args.train_dtype
-            )
-        use_apex = True
-
-        from espnet.nets.pytorch_backend.ctc import CTC
-
-        amp.register_float_function(CTC, "loss_fn")
-        amp.init()
-        logging.warning("register ctc as float function")
-    else:
-        use_apex = False
+    use_apex = False
 
     # FIXME: TOO DIRTY HACK
     setattr(optimizer, "target", reporter)
@@ -850,55 +826,6 @@ def train(args):
     # save snapshot at every epoch - for model averaging
     trainer.extend(torch_snapshot(), trigger=(1, "epoch"))
 
-    # epsilon decay in the optimizer
-    if args.opt == "adadelta":
-        if args.criterion == "acc" and mtl_mode != "ctc":
-            trainer.extend(
-                restore_snapshot(
-                    model, args.outdir + "/model.acc.best", load_fn=torch_load
-                ),
-                trigger=CompareValueTrigger(
-                    "validation/main/acc",
-                    lambda best_value, current_value: best_value > current_value,
-                ),
-            )
-            trainer.extend(
-                adadelta_eps_decay(args.eps_decay),
-                trigger=CompareValueTrigger(
-                    "validation/main/acc",
-                    lambda best_value, current_value: best_value > current_value,
-                ),
-            )
-        elif args.criterion == "loss":
-            trainer.extend(
-                restore_snapshot(
-                    model, args.outdir + "/model.loss.best", load_fn=torch_load
-                ),
-                trigger=CompareValueTrigger(
-                    "validation/main/loss",
-                    lambda best_value, current_value: best_value < current_value,
-                ),
-            )
-            trainer.extend(
-                adadelta_eps_decay(args.eps_decay),
-                trigger=CompareValueTrigger(
-                    "validation/main/loss",
-                    lambda best_value, current_value: best_value < current_value,
-                ),
-            )
-        # NOTE: In some cases, it may take more than one epoch for the model's loss
-        # to escape from a local minimum.
-        # Thus, restore_snapshot extension is not used here.
-        # see details in https://github.com/espnet/espnet/pull/2171
-        elif args.criterion == "loss_eps_decay_only":
-            trainer.extend(
-                adadelta_eps_decay(args.eps_decay),
-                trigger=CompareValueTrigger(
-                    "validation/main/loss",
-                    lambda best_value, current_value: best_value < current_value,
-                ),
-            )
-
     # Write a log of evaluation statistics for each epoch
     trainer.extend(
         extensions.LogReport(trigger=(args.report_interval_iters, "iteration"))
@@ -930,17 +857,7 @@ def train(args):
             "elapsed_time",
         ] + ([] if args.num_encs == 1 else report_keys_cer_ctc + report_keys_loss_ctc)
 
-    if args.opt == "adadelta":
-        trainer.extend(
-            extensions.observe_value(
-                "eps",
-                lambda trainer: trainer.updater.get_optimizer("main").param_groups[0][
-                    "eps"
-                ],
-            ),
-            trigger=(args.report_interval_iters, "iteration"),
-        )
-        report_keys.append("eps")
+
     if args.report_cer:
         report_keys.append("validation/main/cer")
     if args.report_wer:
