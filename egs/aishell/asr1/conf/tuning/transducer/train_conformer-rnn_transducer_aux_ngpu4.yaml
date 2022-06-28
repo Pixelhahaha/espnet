@@ -1,5 +1,5 @@
 # minibatch related
-batch-size: 32
+batch-size: 16
 maxlen-in: 512
 maxlen-out: 150
 
@@ -8,6 +8,7 @@ criterion: loss
 early-stop-criterion: "validation/main/loss"
 sortagrad: 0
 opt: noam
+noam-adim: 512
 transformer-lr: 1.0
 transformer-warmup-steps: 25000
 epochs: 100
@@ -52,6 +53,6 @@ report-wer: True
 report-cer: True
 
 # auxiliary task
-aux-ctc: True
-aux-ctc-weight: 0.5
-aux-ctc-dropout-rate: 0.1
+use-ctc-loss: True
+ctc-loss-weight: 0.5
+ctc-loss-dropout-rate: 0.1
